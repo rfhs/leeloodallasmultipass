@@ -1,0 +1,122 @@
+#!/bin/sh
+
+#this will run things that need root, so just check here for root
+if [ -n "$(command -v id 2> /dev/null)" ]; then
+  USERID="$(id -u 2> /dev/null)"
+fi
+
+if [ -z "${USERID}" ] && [ -n "$(id -ru)" ]; then
+  USERID="$(id -ru)"
+fi
+
+if [ -n "${USERID}" ] && [ "${USERID}" != "0" ]; then
+  printf "Run it as root\n" ; exit 1;
+elif [ -z "${USERID}" ]; then
+  printf "Unable to determine user id, permission errors may occur.\n"
+fi
+
+#truthfully, I have no idea if this matters for wifi.  but it doesn't hurt
+#disable limit (default 16MB) on memory used for usb transfer
+if [ -w "/sys/module/usbcore/parameters/usbfs_memory_mb" ]; then
+  echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb
+fi
+
+if [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
+  printf "No arping is installed, pick one and install it\n"
+  exit 1
+fi
+
+if [ -x /etc/init.d/ntp ]; then
+  /etc/init.d/ntp status > /dev/null 2>&1 || /etc/init.d/ntp start
+  # shellcheck disable=SC2181
+  if [ "$?" != "0" ]; then
+    printf "ntp failed to start, but we really want it.\n"
+    #we may not have internet, fail gracefully
+    #exit 1
+  fi
+fi
+
+if [ -x /etc/init.d/thermald ]; then
+  /etc/init.d/thermald status > /dev/null 2>&1 || /etc/init.d/thermald start
+  # shellcheck disable=SC2181
+  if [ "$?" != "0" ]; then
+    printf "thermald failed to start, but we really want it.\n"
+  fi
+else
+  printf "Please 'emerge thermald' before running this script or we may cook ourselves.\n"
+fi
+
+#this *will* fail horribly without significant entropy for wpa_supplicant, on most systems that seems to require rng-tools installed
+if [ -x /etc/init.d/rngd ]; then
+  /etc/init.d/rngd status > /dev/null 2>&1 || /etc/init.d/rngd start
+  # shellcheck disable=SC2181
+  if [ "$?" != "0" ]; then
+    printf "rngd failed to start, but we really need it.\n"
+    printf "Most likely this can be solved by specifying a device manually in /etc/conf.d/rngd\n"
+    printf "Run 'ls /dev/hw_random* /dev/hwrandom* /dev/i810_rng /dev/hwrng* /dev/urandom'\n"
+    printf "Then add the first hit from ls to DEVICE= in /etc/conf.d/rngd\n"
+    exit 1
+  fi
+else
+  printf "Please 'emerge rng-tools' before running this script or wpa_supplicant will fail.\n"
+fi
+
+if [ -x /usr/sbin/watchdog ]; then
+  if [ -r /etc/watchdog.conf ]; then
+    if grep -q '#watchdog-device = /dev/watchdog' /etc/watchdog.conf && [ -f /dev/watchdog ]; then
+      if [ -w /etc/watchdog.conf ]; then
+        sed -i 's/^#watchdog-device/watchdog-device/' /etc/watchdog.conf
+      else
+        printf "Unable to write to watchdog.conf\n"
+      fi
+    fi
+    if grep -q '^watchdog-device' /etc/watchdog.conf; then
+      /etc/init.d/watchdog status > /dev/null 2>&1 || /etc/init.d/watchdog start
+    fi
+  fi
+fi
+
+
+#setup screen
+ssn="LeelooDallasMultipass"
+screen -d -m -S "${ssn}"
+screen -S "${ssn}" -X hardstatus string "[%f%n%?:%t%?]%h"
+window=0
+
+
+#right before starting everything, remove status files
+mkdir -p /run/rfctf_status
+#rm -rf "/run/rfctf_status/*_{attempt,active,seen,meta}"
+
+#start everything
+for command in \
+  "./unified_client wlan10 300 RFHS_WEP128_2G.conf" \
+  "./unified_client wlan11 300 RFHS_WEP128_5G.conf" \
+  "./unified_client wlan12 300 RFHS_WEP64_2G.conf" \
+  "./unified_client wlan13 300 RFHS_WEP64_5G.conf" \
+  "./unified_client wlan14 14400 RFHS_WPA_11r_2G.conf" \
+  "./unified_client wlan15 14400 RFHS_WPA_11r_5G.conf" \
+  "./unified_client wlan16 14400 RFHS_WPA_11rw_2G.conf" \
+  "./unified_client wlan17 14400 RFHS_WPA_11rw_5G.conf" \
+  "./unified_client wlan18 14400 RFHS_WPA_11w1_2G.conf" \
+  "./unified_client wlan19 14400 RFHS_WPA_11w1_5G.conf" \
+  "./unified_client wlan20 14400 RFHS_WPA_11w2_2G.conf" \
+  "./unified_client wlan21 14400 RFHS_WPA_11w2_5G.conf" \
+  "./unified_client wlan22 30 RFHS_WPA_2G.conf" \
+  "./unified_client wlan23 30 RFHS_WPA_5G.conf" \
+  "./unified_client wlan24 14400 RFHS_WPA_HIDDEN_2G.conf" \
+  "./unified_client wlan25 14400 RFHS_WPA_HIDDEN_5G.conf" \
+  ; do
+  if [ "${window}" = 0 ]; then
+    screen -p "${window}" -S "${ssn}" -X title "${command}"
+  else
+    screen -S "${ssn}" -X screen -t "${command}"
+    sleep 1
+  fi
+  screen -p "${window}" -S "${ssn}" -X stuff "sh -c \"${command}\""'\n'
+  : $((window=window+1))
+  sleep 2
+done
+
+#attach
+screen -xr "${ssn}"

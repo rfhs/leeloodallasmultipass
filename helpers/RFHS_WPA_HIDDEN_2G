@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+## Example Helper
+#
+# This can be anything executable (bash, python, etc), so long as it's named the same as the wpa_supplicant config file in ../config/ without the trailing .conf
+# This will run after a connection is complete and an ip and gateway are acquired.  This code is run in a loop, alternating with 30 seconds worth of arping hitting the gateway.
+
+##This being an example, take a nap
+sleep 10
+
+##or we could ping something
+#ping www.kernel.org
+
+##or we could fetch something
+#wget www.kernel.org
+#curl www.kernel.org
+
+##or script some simple interaction like ftp
+#(sleep 1;
+#echo "user root ";
+#sleep 1;
+#echo "pass toor";
+#sleep 1;
+#echo "binary";
+#sleep 1;
+#echo "cd data";
+#sleep 1;
+#echo "get somefile";
+#sleep 1;
+#echo "quit") | ftp -n 192.168.1.1

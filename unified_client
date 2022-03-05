@@ -1,0 +1,116 @@
+#!/bin/sh
+
+if [ -x "$(command -v id 2> /dev/null)" ]; then
+  USERID="$(id -u 2> /dev/null)"
+fi
+
+if [ -z "${USERID}" ] && [ -n "${UID}" ]; then
+  USERID=${UID}
+fi
+
+if [ -n "${USERID}" ] &&  [ "${USERID}" != "0" ]; then
+  printf "Run it as root\n" ; exit 1;
+elif [ -z "${USERID}" ] && [ -z "${UID}" ]; then
+  printf "Unable to detect if running as root\n"
+fi
+
+if [ -z "${3}" ]; then
+  printf "Usage: %s <interface> <connection time in seconds> <wpa_supplicant.conf> [wpa_supplicant.conf]\n" "${0}"
+  exit 1
+fi
+
+interface="${1}"
+shift
+connection_timeout="${1}"
+shift
+conf_files="${*}"
+
+#wait for interface
+printf "Waiting for %s...\n" "${interface}"
+while true; do
+  if ip addr show "${interface}" > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+printf "We have %s, continuing...\n" "${interface}"
+
+politekill() {
+  for i in "${@}"; do
+    pkill -TERM -f "${i}"
+  done
+  sleep 1
+  for i in "${@}"; do
+    pkill -9 -f "${1}"
+  done
+}
+
+control_c() {
+  politekill "${arping_cmdline}" "${dhcp_cmdline}" "${wpa_supplicant_cmdline}"
+  ip addr flush dev "${interface}"
+  exit
+}
+
+trap control_c INT
+trap control_c TERM
+trap control_c EXIT
+
+#todo: detect arping more correctly, including debian/raspbian arping
+if [ -x /usr/sbin/arping ]; then
+	which_arping="/usr/sbin/arping -c 5 -W 1 -i -v"
+elif [ -x /bin/arping ]; then
+	which_arping="/bin/arping -c 5 -w 5 -I"
+fi
+
+while true;
+do
+  #this loop includes between 10 and 50 seconds of sleep for each config file in "conf_files"
+  #so each AP will have a client connected for 30ish seconds at least once every number of conf_files minutes (absent deauth floods)
+  for conffile in ${conf_files}; do
+    ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}")
+    #set each command as a variable so it is always identical in the code
+    dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} ${interface} --request"
+    wpa_supplicant_cmdline="wpa_supplicant -Dnl80211 -i ${interface} -c config/${conffile}"
+    arping_cmdline="${which_arping} ${interface}"
+
+    #kill everything and ensure it's dead
+    politekill "${wpa_supplicant_cmdline}" "${dhcp_cmdline}" "${arping_cmdline}"
+
+    #start new wpa_supplicant and wait up to 12 seconds for a connection
+    printf "Attempting to connect to SSID: %s using config %s...\n" "${ssid}" "${conffile}"
+    ${wpa_supplicant_cmdline} &
+    for i in $(seq 12); do
+      if iw "${interface}" link | grep -q '^Connected'; then
+        break
+      fi
+      sleep 1
+    done
+
+    #start new dhcp client and wait up to 28 seconds for success
+    ${dhcp_cmdline} &
+    for i in $(seq 28); do
+      if [ -n "$(ip route show dev "${interface}" | awk '/default/ {print $3}')" ]; then
+        break
+      fi
+      sleep 1
+    done
+
+    if [ -n "$(ip route show dev "${interface}" | awk '/default/ {print $3}')" ]; then
+      printf "We have an ip address\n"
+      start_time=$(date '+%s')
+      while [ "${start_time}" -gt $(( $(date '+%s') - connection_timeout )) ]; do
+        ${arping_cmdline} "$(ip route show dev "${interface}" | awk '/default/ {print $3}')"
+        if [ -x "helpers/${conffile%.*}" ]; then
+          timeout 10 "helpers/${conffile%.*}"
+        fi
+      done
+    else
+      printf "We never got an ip address, recycling.\n"
+    fi
+
+    #disconnect and cleanup
+    politekill "${wpa_supplicant_cmdline}" "${dhcp_cmdline}" "${arping_cmdline}"
+    sleep 1
+    ip addr flush dev "${interface}"
+  done
+done
