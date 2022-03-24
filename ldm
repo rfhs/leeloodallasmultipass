@@ -78,6 +78,10 @@ fi
 
 
 #setup screen
+screen -wipe
+if [ -d '/tmp/screen' ]; then
+  chmod 777 /tmp/screen
+fi
 ssn="LeelooDallasMultipass"
 screen -d -m -S "${ssn}"
 screen -S "${ssn}" -X hardstatus string "[%f%n%?:%t%?]%h"
