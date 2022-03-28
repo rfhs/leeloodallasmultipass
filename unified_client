@@ -67,7 +67,7 @@ do
   #this loop includes between 10 and 50 seconds of sleep for each config file in "conf_files"
   #so each AP will have a client connected for 30ish seconds at least once every number of conf_files minutes (absent deauth floods)
   for conffile in ${conf_files}; do
-    ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}")
+    ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
     #set each command as a variable so it is always identical in the code
     dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} ${interface} --request"
     wpa_supplicant_cmdline="wpa_supplicant -Dnl80211 -i ${interface} -c config/${conffile}"
