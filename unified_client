@@ -77,7 +77,7 @@ do
     politekill "${wpa_supplicant_cmdline}" "${dhcp_cmdline}" "${arping_cmdline}"
 
     #start new wpa_supplicant and wait up to 12 seconds for a connection
-    printf "Attempting to connect to SSID: %s for %ss using config %s...\n" "${ssid}" "${timeout}" "${conffile}"
+    printf "Attempting to connect to SSID: %s for %ss using config %s...\n" "${ssid}" "${connection_timeout}" "${conffile}"
     ${wpa_supplicant_cmdline} &
     for i in $(seq 12); do
       if iw "${interface}" link | grep -q '^Connected'; then
