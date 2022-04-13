@@ -15,36 +15,38 @@ elif [ -z "${USERID}" ]; then
   printf "Unable to determine user id, permission errors may occur.\n"
 fi
 
-#truthfully, I have no idea if this matters for wifi.  but it doesn't hurt
-#disable limit (default 16MB) on memory used for usb transfer
-if [ -w "/sys/module/usbcore/parameters/usbfs_memory_mb" ]; then
-  echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb
-fi
-
 if [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
   printf "No arping is installed, pick one and install it\n"
   exit 1
 fi
 
-if [ -x /etc/init.d/ntp ]; then
-  /etc/init.d/ntp status > /dev/null 2>&1 || /etc/init.d/ntp start
-  # shellcheck disable=SC2181
-  if [ "$?" != "0" ]; then
-    printf "ntp failed to start, but we really want it.\n"
-    #we may not have internet, fail gracefully
-    #exit 1
+system_checks() {
+  #truthfully, I have no idea if this matters for wifi.  but it doesn't hurt
+  #disable limit (default 16MB) on memory used for usb transfer
+  if [ -w "/sys/module/usbcore/parameters/usbfs_memory_mb" ]; then
+    echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb
   fi
-fi
 
-if [ -x /etc/init.d/thermald ]; then
-  /etc/init.d/thermald status > /dev/null 2>&1 || /etc/init.d/thermald start
-  # shellcheck disable=SC2181
-  if [ "$?" != "0" ]; then
-    printf "thermald failed to start, but we really want it.\n"
+
+  if [ -x /etc/init.d/ntp ]; then
+    /etc/init.d/ntp status > /dev/null 2>&1 || /etc/init.d/ntp start
+    # shellcheck disable=SC2181
+    if [ "$?" != "0" ]; then
+      printf "ntp failed to start, but we really want it.\n"
+      #we may not have internet, fail gracefully
+      #exit 1
+    fi
   fi
-else
-  printf "Please 'emerge thermald' before running this script or we may cook ourselves.\n"
-fi
+
+  if [ -x /etc/init.d/thermald ]; then
+    /etc/init.d/thermald status > /dev/null 2>&1 || /etc/init.d/thermald start
+    # shellcheck disable=SC2181
+    if [ "$?" != "0" ]; then
+      printf "thermald failed to start, but we really want it.\n"
+    fi
+  else
+    printf "Please 'emerge thermald' before running this script or we may cook ourselves.\n"
+  fi
 
 #this *will* fail horribly without significant entropy for wpa_supplicant, on most systems that seems to require rng-tools installed
 if [ -x /etc/init.d/rngd ]; then
@@ -75,7 +77,14 @@ if [ -x /usr/sbin/watchdog ]; then
     fi
   fi
 fi
+}
 
+if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
+  # Don't start the services in the virtual environment
+  true
+else
+  system_checks
+fi
 
 #setup screen
 screen -wipe
