@@ -117,4 +117,4 @@ do
 done < ldm.conf
 
 #attach
-screen -xr "${ssn}"
+#screen -xr "${ssn}"
