@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 #this will run things that need root, so just check here for root
 if [ -n "$(command -v id 2> /dev/null)" ]; then
   USERID="$(id -u 2> /dev/null)"
@@ -48,42 +50,47 @@ system_checks() {
     printf "Please 'emerge thermald' before running this script or we may cook ourselves.\n"
   fi
 
-#this *will* fail horribly without significant entropy for wpa_supplicant, on most systems that seems to require rng-tools installed
-if [ -x /etc/init.d/rngd ]; then
-  /etc/init.d/rngd status > /dev/null 2>&1 || /etc/init.d/rngd start
-  # shellcheck disable=SC2181
-  if [ "$?" != "0" ]; then
-    printf "rngd failed to start, but we really need it.\n"
-    printf "Most likely this can be solved by specifying a device manually in /etc/conf.d/rngd\n"
-    printf "Run 'ls /dev/hw_random* /dev/hwrandom* /dev/i810_rng /dev/hwrng* /dev/urandom'\n"
-    printf "Then add the first hit from ls to DEVICE= in /etc/conf.d/rngd\n"
-    exit 1
+  #this *will* fail horribly without significant entropy for wpa_supplicant, on most systems that seems to require rng-tools installed
+  if [ -x /etc/init.d/rngd ]; then
+    /etc/init.d/rngd status > /dev/null 2>&1 || /etc/init.d/rngd start
+    # shellcheck disable=SC2181
+    if [ "$?" != "0" ]; then
+      printf "rngd failed to start, but we really need it.\n"
+      printf "Most likely this can be solved by specifying a device manually in /etc/conf.d/rngd\n"
+      printf "Run 'ls /dev/hw_random* /dev/hwrandom* /dev/i810_rng /dev/hwrng* /dev/urandom'\n"
+      printf "Then add the first hit from ls to DEVICE= in /etc/conf.d/rngd\n"
+      exit 1
+    fi
+  else
+    printf "Please 'emerge rng-tools' before running this script or wpa_supplicant will fail.\n"
   fi
-else
-  printf "Please 'emerge rng-tools' before running this script or wpa_supplicant will fail.\n"
-fi
 
-if [ -x /usr/sbin/watchdog ]; then
-  if [ -r /etc/watchdog.conf ]; then
-    if grep -q '#watchdog-device = /dev/watchdog' /etc/watchdog.conf && [ -f /dev/watchdog ]; then
-      if [ -w /etc/watchdog.conf ]; then
-        sed -i 's/^#watchdog-device/watchdog-device/' /etc/watchdog.conf
-      else
-        printf "Unable to write to watchdog.conf\n"
+  if [ -x /usr/sbin/watchdog ]; then
+    if [ -r /etc/watchdog.conf ]; then
+      if grep -q '#watchdog-device = /dev/watchdog' /etc/watchdog.conf && [ -f /dev/watchdog ]; then
+        if [ -w /etc/watchdog.conf ]; then
+          sed -i 's/^#watchdog-device/watchdog-device/' /etc/watchdog.conf
+        else
+          printf "Unable to write to watchdog.conf\n"
+        fi
+      fi
+      if grep -q '^watchdog-device' /etc/watchdog.conf; then
+        /etc/init.d/watchdog status > /dev/null 2>&1 || /etc/init.d/watchdog start
       fi
     fi
-    if grep -q '^watchdog-device' /etc/watchdog.conf; then
-      /etc/init.d/watchdog status > /dev/null 2>&1 || /etc/init.d/watchdog start
-    fi
   fi
-fi
 }
 
 if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
   # Don't start the services in the virtual environment
   true
 else
-  system_checks
+  if [ -f '/.dockerenv' ]; then
+    #we don't need system checks in docker either
+    true
+  else
+    system_checks
+  fi
 fi
 
 #setup screen
