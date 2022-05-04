@@ -89,7 +89,7 @@ fi
 #setup screen
 screen -wipe
 if [ -d '/tmp/screen' ]; then
-  chmod 777 /tmp/screen
+  chmod 775 /tmp/screen
 fi
 ssn="LeelooDallasMultipass"
 screen -d -m -S "${ssn}"
