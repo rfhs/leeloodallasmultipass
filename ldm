@@ -23,6 +23,13 @@ if [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
 fi
 
 system_checks() {
+  if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
+    # Don't start the services in the virtual environment
+    return 0
+  fi
+  # Or in docker
+  [ -f '/.dockerenv' ] && return 0
+
   #truthfully, I have no idea if this matters for wifi.  but it doesn't hurt
   #disable limit (default 16MB) on memory used for usb transfer
   if [ -w "/sys/module/usbcore/parameters/usbfs_memory_mb" ]; then
@@ -81,17 +88,7 @@ system_checks() {
   fi
 }
 
-if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
-  # Don't start the services in the virtual environment
-  true
-else
-  if [ -f '/.dockerenv' ]; then
-    #we don't need system checks in docker either
-    true
-  else
-    system_checks
-  fi
-fi
+system_checks
 
 #setup screen
 screen -wipe
