@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+exit_code=0
+# shellcheck disable=SC2013
+for meta in $(awk '!/^#/ {print $3","$4}' ldm.conf); do
+  timeout="$(( ${meta%%,*} + 60 ))"
+  conffile="${meta##*,}"
+  if ! pgrep -f "unified_client .* ${meta%%,*} ${conffile}" > /dev/null 2>&1; then
+    printf "No unified_client running for configured %s\n" "${meta}"
+    exit_code=1
+  fi
+  ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
+  if [ -f "/run/rfctf_status/${ssid}_attempt" ]; then
+    attempt_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_attempt")
+    currtime=$(date +%s)
+    diff=$(( currtime - attempt_mtime ))
+    if [ "${diff}" -gt "${timeout}" ]; then
+      printf "No connection attempt on configured ssid %s in %ss\n" "${ssid}" "${diff}"
+      exit_code=1
+    fi
+    unset attempt_mtime diff
+    if [ "${1:-}" != "--test" ]; then
+      if [ -f "/run/rfctf_status/${ssid}_active" ]; then
+        active_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_active")
+        currtime=$(date +%s)
+        diff=$(( currtime - active_mtime ))
+        if [ "${diff}" -gt "${timeout}" ]; then
+          printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}"
+          exit_code=1
+        fi
+        unset active_mtime diff
+      else
+        printf "No connection success on configured ssid %s\n" "${ssid}"
+      fi
+    fi
+  else
+    printf "No connection attempt on configured ssid %s\n" "${ssid}"
+    exit_code=1
+  fi
+done
+exit "${exit_code}"
