@@ -69,7 +69,7 @@ do
   for conffile in ${conf_files}; do
     ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
     #set each command as a variable so it is always identical in the code
-    dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} ${interface} --request=0.0.0.0"
+    dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} --noipv4ll --ipv4only ${interface} --request=0.0.0.0"
     wpa_supplicant_cmdline="wpa_supplicant -Dnl80211 -i ${interface} -c config/${conffile}"
     arping_cmdline="${which_arping} ${interface}"
 
