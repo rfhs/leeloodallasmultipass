@@ -31,6 +31,7 @@ for meta in $(awk '!/^#/ {print $3","$4}' ldm.conf); do
         unset active_mtime diff
       else
         printf "No connection success on configured ssid %s\n" "${ssid}"
+        exit_code=1
       fi
     fi
   else
