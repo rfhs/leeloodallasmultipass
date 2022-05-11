@@ -91,7 +91,7 @@ system_checks() {
 system_checks
 
 #setup screen
-screen -wipe
+screen -wipe || true # exits 1 when no old sessions are found to wipe
 if [ -d '/tmp/screen' ]; then
   chmod 775 /tmp/screen
 fi
