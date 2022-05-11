@@ -69,7 +69,7 @@ do
   for conffile in ${conf_files}; do
     ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
     #set each command as a variable so it is always identical in the code
-    dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} ${interface} --request"
+    dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} ${interface} --request=0.0.0.0"
     wpa_supplicant_cmdline="wpa_supplicant -Dnl80211 -i ${interface} -c config/${conffile}"
     arping_cmdline="${which_arping} ${interface}"
 
@@ -95,11 +95,18 @@ do
       sleep 1
     done
 
+    #register connection attempt
+    touch "/run/rfctf_status/${ssid}_attempt"
+
     if [ -n "$(ip route show dev "${interface}" | awk '/default/ {print $3}')" ]; then
       printf "We have an ip address\n"
       start_time=$(date '+%s')
       while [ "${start_time}" -gt $(( $(date '+%s') - connection_timeout )) ]; do
+        #we should be checking arping success but the exit codes are weird
         ${arping_cmdline} "$(ip route show dev "${interface}" | awk '/default/ {print $3}')"
+        #register connection success
+        #since we are not 100% sure we are connected, let's include the ip address for now
+        ip addr show dev "${interface}" 2>&1 | awk '/inet / {print $2}' > "/run/rfctf_status/${ssid}_active"
         if [ -x "helpers/${conffile%.*}" ]; then
           timeout 10 "helpers/${conffile%.*}"
         fi
