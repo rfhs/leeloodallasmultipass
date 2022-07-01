@@ -92,8 +92,9 @@ system_checks
 
 #setup screen
 screen -wipe || true # exits 1 when no old sessions are found to wipe
-if [ -d '/tmp/screen' ]; then
-  chmod 775 /tmp/screen
+if [ -d '/tmp/screen' ] && [ -f '/.dockerenv' ]; then
+  #sometimes screen expects 777, sometimes 775, I don't know why
+  rm -rf '/tmp/screen'
 fi
 ssn="LeelooDallasMultipass"
 screen -d -m -S "${ssn}"
