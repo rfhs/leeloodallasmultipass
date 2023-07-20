@@ -17,11 +17,6 @@ elif [ -z "${USERID}" ]; then
   printf "Unable to determine user id, permission errors may occur.\n"
 fi
 
-if [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
-  printf "No arping is installed, pick one and install it\n"
-  exit 1
-fi
-
 system_checks() {
   if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
     # Don't start the services in the virtual environment
