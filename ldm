@@ -17,7 +17,7 @@ elif [ -z "${USERID}" ]; then
   printf "Unable to determine user id, permission errors may occur.\n"
 fi
 
-if [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
+if [ ! -x /usr/bin/arping ] && [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]; then
   printf "No arping is installed, pick one and install it\n"
   exit 1
 fi
