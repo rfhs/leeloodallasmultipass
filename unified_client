@@ -57,7 +57,7 @@ trap control_c EXIT
 
 #todo: detect arping more correctly, including debian/raspbian arping
 if [ -x /usr/bin/arping ]; then
-	which_arping="/bin/arping -c 5 -w 5 -I"
+	which_arping="/usr/bin/arping -c 5 -w 5 -I"
 elif [ -x /usr/sbin/arping ]; then
 	which_arping="/usr/sbin/arping -c 5 -W 1 -i -v"
 elif [ -x /bin/arping ]; then
