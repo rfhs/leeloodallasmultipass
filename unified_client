@@ -69,6 +69,14 @@ do
   #this loop includes between 10 and 50 seconds of sleep for each config file in "conf_files"
   #so each AP will have a client connected for 30ish seconds at least once every number of conf_files minutes (absent deauth floods)
   for conffile in ${conf_files}; do
+    if [ ! -e "config/${conffile}" ]; then
+      printf "config/%s specified at the command line is not present, failing.\n" "${conffile}"
+      exit 1
+    fi
+    if [ ! -r "config/${conffile}" ]; then
+      printf "config/%s specified at the command line is not readable, failing.\n" "${conffile}"
+      exit 1
+    fi
     ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/^ssid=/s/ssid=//p' "config/${conffile}" | head -n1)
     #set each command as a variable so it is always identical in the code
     dhcp_cmdline="dhcpcd --waitip=4 --hostname=${ssid} --noipv4ll --ipv4only ${interface} --request=0.0.0.0"
