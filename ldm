@@ -22,6 +22,16 @@ if [ ! -x /usr/bin/arping ] && [ ! -x /usr/sbin/arping ] && [ ! -x /bin/arping ]
   exit 1
 fi
 
+if [ ! -x "$(command -v screen 2>&1)" ]; then
+  printf "Please install screen\n"
+	exit 1
+fi
+
+if [ ! -x "$(command -v dhcpcd 2>&1)" ]; then
+  printf "Please install dhcpcd\n"
+	exit 1
+fi
+
 system_checks() {
   if [ -r "/sys/devices/virtual/dmi/id/board_vendor" ] && [ "$(cat /sys/devices/virtual/dmi/id/board_vendor)" = 'Amazon EC2' ]; then
     # Don't start the services in the virtual environment

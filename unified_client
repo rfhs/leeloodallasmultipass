@@ -61,6 +61,7 @@ if [ -x /usr/bin/arping ]; then
 elif [ -x /usr/sbin/arping ]; then
 	which_arping="/usr/sbin/arping -c 5 -W 1 -i -v"
 elif [ -x /bin/arping ]; then
+  # I thin raspios moved this to /usr/bin/arping
 	which_arping="/bin/arping -c 5 -w 5 -I"
 fi
 
@@ -99,7 +100,7 @@ do
     #start new dhcp client and wait up to 28 seconds for success
     ${dhcp_cmdline} &
     for i in $(seq 28); do
-      if [ -n "$(ip route show dev "${interface}" | awk '/default/ {print $3}')" ]; then
+      if [ -n "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')" ]; then
         break
       fi
       sleep 1
@@ -108,12 +109,12 @@ do
     #register connection attempt
     touch "/run/rfctf_status/${ssid}_attempt"
 
-    if [ -n "$(ip route show dev "${interface}" | awk '/default/ {print $3}')" ]; then
+    if [ -n "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')" ]; then
       printf "We have an ip address\n"
       start_time=$(date '+%s')
       while [ "${start_time}" -gt $(( $(date '+%s') - connection_timeout )) ]; do
         #we should be checking arping success but the exit codes are weird
-        ${arping_cmdline} "$(ip route show dev "${interface}" | awk '/default/ {print $3}')"
+        ${arping_cmdline} "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')"
         #register connection success
         #since we are not 100% sure we are connected, let's include the ip address for now
         ip addr show dev "${interface}" 2>&1 | awk '/inet / {print $2}' > "/run/rfctf_status/${ssid}_active"
