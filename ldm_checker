@@ -1,18 +1,28 @@
 #!/bin/sh
 set -eu
 exit_code=0
+status_dir='/root/shared_persistent_storage'
+clientstatus="${status_dir}/Client_status"
+printf "# This file is auto generated once per minute (ideally) and NEVER read by anything\n" | tee "${clientstatus}"
+printf '# Last generation start time %s (compare to "date" command)\n' "$(date)" | tee -a "${clientstatus}"
+
+#XXX WARNING XXX
+# This only supports ldm conf files with a max of 4 wpa_supplicant conf files per interface
+
 # shellcheck disable=SC2013
 for conffile in $(awk '!/^#/ {print $4,$5,$6,$7}' ldm.conf); do
-  skip="false"
   requested_timeout="$(grep "${conffile}" ldm.conf | awk '{print $3}')"
   multiplier="0"
   # shellcheck disable=SC2034
-  for i in $(grep "${conffile}" ldm.conf | awk '{print $4,$5,$6,$7}'); do
+  for i in $(awk "/${conffile}/{print \$4,\$5,\$6,\$7}" ldm.conf); do
+    # Here we see how many conf files each wifi card gets
     multiplier="$(( multiplier + 1 ))"
   done
+  # Now we multiply the timeout by how many conf files to find out how long it really takes
+  # +60 for a little wiggle room
   timeout="$(( requested_timeout * multiplier + 60 ))"
   if ! pgrep -f "unified_client .* ${requested_timeout}.*${conffile}" > /dev/null 2>&1; then
-    printf "No unified_client running for configured %s\n" "${conffile}"
+    printf "No unified_client running for configured %s\n" "${conffile}" | tee -a "${clientstatus}"
     exit_code=1
   fi
   ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
@@ -21,31 +31,37 @@ for conffile in $(awk '!/^#/ {print $4,$5,$6,$7}' ldm.conf); do
     currtime=$(date +%s)
     diff=$(( currtime - attempt_mtime ))
     if [ "${diff}" -gt "${timeout}" ]; then
-      printf "No connection attempt on configured ssid %s in %ss\n" "${ssid}" "${diff}"
+      printf "No connection attempt on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
       exit_code=1
     fi
     unset attempt_mtime diff
-    if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
-      # These are client only, so no need to check if they successfully connected
-      skip="true"
-    fi
-    if [ "${1:-}" != "--test" ] && [ "${skip}" = "false" ]; then
+    if [ "${1:-}" != "--test" ]; then
       if [ -f "/run/rfctf_status/${ssid}_active" ]; then
         active_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_active")
         currtime=$(date +%s)
         diff=$(( currtime - active_mtime ))
-        if [ "${diff}" -gt "${timeout}" ]; then
-          printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}"
-          exit_code=1
-        fi
+	if [ "${diff}" -gt "${timeout}" ]; then
+	  printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
+	  if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
+          # These are client only, so it is okay if they failed to connect
+	    true
+	  else
+	    exit_code=1
+	  fi
+	fi
         unset active_mtime diff
       else
-        printf "No connection success on configured ssid %s\n" "${ssid}"
-        exit_code=1
+        printf "No connection success on configured ssid %s\n" "${ssid}" | tee -a "${clientstatus}"
+	if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
+        # These are client only, so it is okay if they failed to connect
+	  true
+	else
+	  exit_code=1
+	fi
       fi
     fi
   else
-    printf "No connection attempt on configured ssid %s\n" "${ssid}"
+    printf "No connection attempt on configured ssid %s\n" "${ssid}" | tee -a "${clientstatus}"
     exit_code=1
   fi
 done
