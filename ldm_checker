@@ -66,4 +66,9 @@ for conffile in $(awk '!/^#/ {print $4,$5,$6,$7}' ldm.conf); do
     exit_code=1
   fi
 done
+if [ "${exit_code}" = '0' ]; then
+  printf 'Everything is operating as expected.\n' | tee -a "${clientstatus}"
+else
+  printf 'Something is not operating as expected.\n' | tee -a "${clientstatus}"
+fi
 exit "${exit_code}"
