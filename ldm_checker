@@ -2,6 +2,7 @@
 set -eu
 exit_code=0
 status_dir='/root/shared_persistent_storage'
+[ ! -d "${status_dir}" ] && mkdir -p "${status_dir}"
 clientstatus="${status_dir}/Client_status"
 printf "# This file is auto generated once per minute (ideally) and NEVER read by anything\n" | tee "${clientstatus}"
 printf '# Last generation start time %s (compare to "date" command)\n' "$(date)" | tee -a "${clientstatus}"
