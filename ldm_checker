@@ -41,24 +41,24 @@ for conffile in $(awk '!/^#/ {print $4,$5,$6,$7}' ldm.conf); do
         active_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_active")
         currtime=$(date +%s)
         diff=$(( currtime - active_mtime ))
-	if [ "${diff}" -gt "${timeout}" ]; then
-	  printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
-	  if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
-          # These are client only, so it is okay if they failed to connect
-	    true
-	  else
-	    exit_code=1
-	  fi
-	fi
+        if [ "${diff}" -gt "${timeout}" ]; then
+          printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
+          if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
+            # These are client only, so it is okay if they failed to connect
+            true
+          else
+            exit_code=1
+          fi
+        fi
         unset active_mtime diff
       else
         printf "No connection success on configured ssid %s\n" "${ssid}" | tee -a "${clientstatus}"
-	if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
-        # These are client only, so it is okay if they failed to connect
-	  true
-	else
-	  exit_code=1
-	fi
+        if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
+          # These are client only, so it is okay if they failed to connect
+          true
+        else
+          exit_code=1
+        fi
       fi
     fi
   else
