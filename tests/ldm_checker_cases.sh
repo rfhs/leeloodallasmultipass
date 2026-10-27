@@ -21,6 +21,22 @@ for tool in ${stubs}; do
   printf '#!/bin/sh\n' > "/usr/local/bin/${tool}"
   chmod +x "/usr/local/bin/${tool}"
 done
+# For --excessive: ip fails with IP_FAILS set, and dhcpcd logs that it ran and
+# titles itself as dhcpcd 10 does, or with DHCPCD_PREFIX in place of
+# "dhcpcd:"
+# shellcheck disable=SC2016 # it expands in the stub
+printf '#!/bin/sh\n[ -z "${IP_FAILS:-}" ]\n' > /usr/local/bin/ip
+cat > /usr/local/bin/dhcpcd << 'EOF'
+#!/bin/bash
+for arg in "$@"; do
+  case "${arg}" in
+    -*) ;;
+    *) iface="${arg}";;
+  esac
+done
+printf '%s\n' "$*" >> /tmp/dhcpcd.log
+exec -a "${DHCPCD_PREFIX:-dhcpcd:} ${iface} [ip4]" sleep 1000
+EOF
 
 start_clients() {
   grep -v '^#' ldm.conf | while read -r cmd iface timeout confs; do
@@ -47,7 +63,7 @@ age() {
 
 reset() {
   stop_clients
-  rm -rf "${work}" /run/rfctf_status /root/shared_persistent_storage
+  rm -rf "${work}" /run/rfctf_status /root/shared_persistent_storage /tmp/dhcpcd.log
   mkdir -p "${work}/config" /run/rfctf_status
   cd "${work}" || exit 1
   printf '#!/bin/sh\nwhile :; do sleep 1000; done\n' > unified_client
@@ -205,6 +221,27 @@ chmod +x /usr/local/bin/wpa_supplicant
 check --test
 good
 result $? 'and passes again with it back'
+
+reset
+check --test
+good && [ ! -e /tmp/dhcpcd.log ]
+result $? '--test starts no dhcpcd'
+check --excessive
+good && [ -e /tmp/dhcpcd.log ] && ! pgrep -f ldmtest > /dev/null
+result $? '--excessive passes when dhcpcd titles itself as unified_client expects, and leaves no dhcpcd running'
+export DHCPCD_PREFIX='dhcpcd[worker]:'
+check --excessive
+unset DHCPCD_PREFIX
+[ "${rc}" = 1 ] && grep -q '^ldm_checker: dhcpcd did not title its process "dhcpcd: ldmtest[0-9]* \[ip4\]", which unified_client kills it by; the processes for ldmtest[0-9]*: [0-9]* dhcpcd\[worker\]: ldmtest' /tmp/out \
+  && cmp -s /tmp/out "${status}" && ! pgrep -f ldmtest > /dev/null
+result $? 'and fails, showing the title it used, when dhcpcd titles itself otherwise'
+rm -f /tmp/dhcpcd.log
+export IP_FAILS=1
+check --excessive
+unset IP_FAILS
+[ "${rc}" = 1 ] && line "ldm_checker: could not add a dummy interface to check dhcpcd's process title" \
+  && [ ! -e /tmp/dhcpcd.log ]
+result $? 'and fails when it cannot add a dummy interface'
 
 stop_clients
 exit "${failures}"

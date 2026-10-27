@@ -2,6 +2,23 @@
 set -eu
 status_dir='/root/shared_persistent_storage'
 clientstatus="${status_dir}/Client_status"
+
+# fail message: reports it, in Client_status too, and exits 1
+fail() {
+  printf '%s\n' "${1}"
+  if [ -d "${status_dir}" ] || mkdir -p "${status_dir}" 2> /dev/null; then
+    printf '%s\n' "${1}" > "${clientstatus}"
+  fi
+  exit 1
+}
+
+excessive=""
+if [ "${1:-}" = "--excessive" ]; then
+  # everything --test does, and then that dhcpcd titles its process as
+  # unified_client expects; it starts a dhcpcd, so it is for builds
+  excessive=1
+  set -- --test
+fi
 missing_tools=""
 # ldm_checker
 for tool in awk date mkdir pgrep stat; do
@@ -19,14 +36,43 @@ if [ "${1:-}" = "--test" ]; then
   # helpers/RFHS_WPA_HIDDEN_2G
   command -v sleep > /dev/null 2>&1 || missing_tools="${missing_tools} sleep (helpers/RFHS_WPA_HIDDEN_2G)"
 fi
-if [ -n "${missing_tools}" ]; then
-  message="${0##*/}: required commands not found:${missing_tools}"
-  printf '%s\n' "${message}"
-  if [ -d "${status_dir}" ] || mkdir -p "${status_dir}" 2> /dev/null; then
-    printf '%s\n' "${message}" > "${clientstatus}"
-  fi
-  exit 1
+if [ -n "${excessive}" ]; then
+  for tool in dhcpcd ip pkill sleep; do
+    command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (ldm_checker --excessive)"
+  done
 fi
+if [ -n "${missing_tools}" ]; then
+  fail "${0##*/}: required commands not found:${missing_tools}"
+fi
+
+if [ -n "${excessive}" ]; then
+  # unified_client kills dhcpcd by the title dhcpcd gives its process,
+  # "dhcpcd: <interface> [ip4]", as nothing lets us choose it; this checks
+  # dhcpcd still titles itself so, on a dummy interface
+  test_iface="ldmtest$$"
+  if ! ip link add "${test_iface}" type dummy 2> /dev/null; then
+    fail "${0##*/}: could not add a dummy interface to check dhcpcd's process title"
+  fi
+  ip link set "${test_iface}" up
+  dhcpcd --waitip=4 --noipv4ll --ipv4only --request=0.0.0.0 "${test_iface}" > /dev/null 2>&1 &
+  launcher=$!
+  tries=0
+  until pgrep -f "^dhcpcd: ${test_iface} " > /dev/null; do
+    tries=$((tries + 1))
+    if [ "${tries}" -ge 50 ]; then
+      break
+    fi
+    sleep 0.1
+  done
+  titles="$(pgrep -af "${test_iface}")" || true
+  pkill -f "${test_iface}" || true
+  kill "${launcher}" 2> /dev/null || true
+  ip link del "${test_iface}"
+  if [ "${tries}" -ge 50 ]; then
+    fail "${0##*/}: dhcpcd did not title its process \"dhcpcd: ${test_iface} [ip4]\", which unified_client kills it by; the processes for ${test_iface}: ${titles:-none}"
+  fi
+fi
+
 [ ! -d "${status_dir}" ] && mkdir -p "${status_dir}"
 header="# This file is auto generated once per minute (ideally) and NEVER read by anything
 # Last generation start time $(date) (compare to \"date\" command)"

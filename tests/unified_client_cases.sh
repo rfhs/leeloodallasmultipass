@@ -177,5 +177,23 @@ start 60
 wait_for 10 gone "${stray}"
 result $? 'a stray arping that ignores TERM is killed with -9'
 
+reset link
+STUB_STRAY=1 dhcpcd --ipv4only "${iface}" > /dev/null 2>&1 &
+stray=$!
+wait_for 5 pgrep -f "^dhcpcd: ${iface} " > /dev/null
+start 60
+wait_for 10 gone "${stray}"
+result $? 'a stray dhcpcd that ignores TERM is found by its title and killed with -9'
+
+reset link
+start 60
+wait_for 15 arpinged
+dhcp="$(pgrep -f "^dhcpcd: ${iface} ")"
+wpa="$(pgrep -f "wpa_supplicant -Dnl80211 -i ${iface} ")"
+kill -TERM "${client}"
+wait_for 15 gone "${client}" && [ -n "${dhcp}" ] && gone "${dhcp}" && [ -n "${wpa}" ] && gone "${wpa}" \
+  && ! ip -4 addr show dev "${iface}" | grep -q inet
+result $? 'stopping it stops its wpa_supplicant and dhcpcd and removes the address'
+
 reset
 exit "${failures}"
