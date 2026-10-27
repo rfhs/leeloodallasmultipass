@@ -3,8 +3,24 @@
 # checker in /ldm_checker:
 #   sh ldm_checker_cases.sh shell
 shell="${1}"
+missing_tools=""
+for tool in cat chmod cmp date grep mkdir pgrep pkill rm sed sleep touch wc; do
+  command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool}"
+done
+if [ -n "${missing_tools}" ]; then
+  printf '%s: required commands not found:%s\n' "${0##*/}" "${missing_tools}" >&2
+  exit 1
+fi
+
 work=/root/leeloodallasmultipass
 status=/root/shared_persistent_storage/Client_status
+
+# Stand-ins for the tools ldm_checker --test requires of ldm and unified_client
+stubs="arping screen dhcpcd ip iw wpa_supplicant"
+for tool in ${stubs}; do
+  printf '#!/bin/sh\n' > "/usr/local/bin/${tool}"
+  chmod +x "/usr/local/bin/${tool}"
+done
 
 start_clients() {
   grep -v '^#' ldm.conf | while read -r cmd iface timeout confs; do
@@ -174,6 +190,21 @@ printf '#./unified_client wlan10 999 RFHS_A.conf\n' >> ldm.conf
 check
 good
 result $? 'a commented out line with a configured conf file is ignored'
+
+reset
+rm /usr/local/bin/wpa_supplicant
+check
+good
+result $? 'a command unified_client needs being missing does not matter without --test'
+check --test
+[ "${rc}" = 1 ] && line 'ldm_checker: required commands not found: wpa_supplicant (unified_client)' \
+  && cmp -s /tmp/out "${status}" && [ "$(wc -l < "${status}")" = 1 ]
+result $? 'with --test it fails, names the command and the script, and writes the same to Client_status'
+printf '#!/bin/sh\n' > /usr/local/bin/wpa_supplicant
+chmod +x /usr/local/bin/wpa_supplicant
+check --test
+good
+result $? 'and passes again with it back'
 
 stop_clients
 exit "${failures}"

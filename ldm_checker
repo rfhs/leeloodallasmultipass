@@ -1,8 +1,33 @@
 #!/bin/sh
 set -eu
 status_dir='/root/shared_persistent_storage'
-[ ! -d "${status_dir}" ] && mkdir -p "${status_dir}"
 clientstatus="${status_dir}/Client_status"
+missing_tools=""
+# ldm_checker
+for tool in awk date mkdir pgrep stat; do
+  command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (ldm_checker)"
+done
+if [ "${1:-}" = "--test" ]; then
+  # ldm, including the commands it runs only in some branches
+  for tool in arping cat dhcpcd grep mkdir rm screen sed sleep; do
+    command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (ldm)"
+  done
+  # unified_client, including the commands it runs only in some branches
+  for tool in arping awk date dhcpcd grep head ip iw pkill sed seq sleep timeout touch wpa_supplicant; do
+    command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (unified_client)"
+  done
+  # helpers/RFHS_WPA_HIDDEN_2G
+  command -v sleep > /dev/null 2>&1 || missing_tools="${missing_tools} sleep (helpers/RFHS_WPA_HIDDEN_2G)"
+fi
+if [ -n "${missing_tools}" ]; then
+  message="${0##*/}: required commands not found:${missing_tools}"
+  printf '%s\n' "${message}"
+  if [ -d "${status_dir}" ] || mkdir -p "${status_dir}" 2> /dev/null; then
+    printf '%s\n' "${message}" > "${clientstatus}"
+  fi
+  exit 1
+fi
+[ ! -d "${status_dir}" ] && mkdir -p "${status_dir}"
 header="# This file is auto generated once per minute (ideally) and NEVER read by anything
 # Last generation start time $(date) (compare to \"date\" command)"
 printf '%s\n' "${header}"

@@ -8,6 +8,15 @@
 # The image is Debian based; procps, mksh and busybox are installed in it.
 set -eu
 
+missing_tools=""
+for tool in dirname docker; do
+  command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool}"
+done
+if [ -n "${missing_tools}" ]; then
+  printf '%s: required commands not found:%s\n' "${0##*/}" "${missing_tools}" >&2
+  exit 1
+fi
+
 checker=ldm_checker
 image=debian:trixie-slim
 shells=""
