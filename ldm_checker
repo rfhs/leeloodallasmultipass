@@ -37,7 +37,7 @@ if [ "${1:-}" = "--test" ]; then
   command -v sleep > /dev/null 2>&1 || missing_tools="${missing_tools} sleep (helpers/RFHS_WPA_HIDDEN_2G)"
 fi
 if [ -n "${excessive}" ]; then
-  for tool in dhcpcd ip pkill sleep; do
+  for tool in awk cat dhcpcd ip mktemp pkill rm sleep; do
     command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (ldm_checker --excessive)"
   done
 fi
@@ -54,7 +54,8 @@ if [ -n "${excessive}" ]; then
     fail "${0##*/}: could not add a dummy interface to check dhcpcd's process title"
   fi
   ip link set "${test_iface}" up
-  dhcpcd --waitip=4 --noipv4ll --ipv4only --request=0.0.0.0 "${test_iface}" > /dev/null 2>&1 &
+  dhcpcd_output="$(mktemp)"
+  dhcpcd --waitip=4 --noipv4ll --ipv4only --request=0.0.0.0 "${test_iface}" > "${dhcpcd_output}" 2>&1 &
   launcher=$!
   tries=0
   until pgrep -f "^dhcpcd: ${test_iface} " > /dev/null; do
@@ -65,11 +66,22 @@ if [ -n "${excessive}" ]; then
     sleep 0.1
   done
   titles="$(pgrep -af "${test_iface}")" || true
+  # a process that has exited stays a zombie until this shell waits for it
+  launcher_state="$(awk '{ print $3 }' "/proc/${launcher}/stat" 2> /dev/null)" || true
+  if [ -z "${launcher_state}" ] || [ "${launcher_state}" = Z ]; then
+    launcher_status=0
+    wait "${launcher}" || launcher_status=$?
+    launcher_state="had exited with ${launcher_status}"
+  else
+    launcher_state="was still running"
+  fi
   pkill -f "${test_iface}" || true
   kill "${launcher}" 2> /dev/null || true
   ip link del "${test_iface}"
+  output="$(cat "${dhcpcd_output}")"
+  rm -f "${dhcpcd_output}"
   if [ "${tries}" -ge 50 ]; then
-    fail "${0##*/}: dhcpcd did not title its process \"dhcpcd: ${test_iface} [ip4]\", which unified_client kills it by; the processes for ${test_iface}: ${titles:-none}"
+    fail "${0##*/}: dhcpcd did not title its process \"dhcpcd: ${test_iface} [ip4]\", which unified_client kills it by; the processes for ${test_iface}: ${titles:-none}; the dhcpcd it started ${launcher_state}, and said: ${output:-nothing}"
   fi
 fi
 

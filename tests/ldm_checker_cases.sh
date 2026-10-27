@@ -23,7 +23,7 @@ for tool in ${stubs}; do
 done
 # For --excessive: ip fails with IP_FAILS set, and dhcpcd logs that it ran and
 # titles itself as dhcpcd 10 does, or with DHCPCD_PREFIX in place of
-# "dhcpcd:"
+# "dhcpcd:", or with DHCPCD_EXIT set says so and exits with it
 # shellcheck disable=SC2016 # it expands in the stub
 printf '#!/bin/sh\n[ -z "${IP_FAILS:-}" ]\n' > /usr/local/bin/ip
 cat > /usr/local/bin/dhcpcd << 'EOF'
@@ -35,6 +35,10 @@ for arg in "$@"; do
   esac
 done
 printf '%s\n' "$*" >> /tmp/dhcpcd.log
+if [ -n "${DHCPCD_EXIT:-}" ]; then
+  printf 'exiting with %s\n' "${DHCPCD_EXIT}"
+  exit "${DHCPCD_EXIT}"
+fi
 exec -a "${DHCPCD_PREFIX:-dhcpcd:} ${iface} [ip4]" sleep 1000
 EOF
 
@@ -235,6 +239,12 @@ unset DHCPCD_PREFIX
 [ "${rc}" = 1 ] && grep -q '^ldm_checker: dhcpcd did not title its process "dhcpcd: ldmtest[0-9]* \[ip4\]", which unified_client kills it by; the processes for ldmtest[0-9]*: [0-9]* dhcpcd\[worker\]: ldmtest' /tmp/out \
   && cmp -s /tmp/out "${status}" && ! pgrep -f ldmtest > /dev/null
 result $? 'and fails, showing the title it used, when dhcpcd titles itself otherwise'
+export DHCPCD_EXIT=3
+check --excessive
+unset DHCPCD_EXIT
+[ "${rc}" = 1 ] && grep -q '^ldm_checker: dhcpcd did not title its process "dhcpcd: ldmtest[0-9]* \[ip4\]", which unified_client kills it by; the processes for ldmtest[0-9]*: none; the dhcpcd it started had exited with 3, and said: exiting with 3$' /tmp/out \
+  && cmp -s /tmp/out "${status}"
+result $? 'and fails, showing its exit status and output, when dhcpcd exits at once'
 rm -f /tmp/dhcpcd.log
 export IP_FAILS=1
 check --excessive
