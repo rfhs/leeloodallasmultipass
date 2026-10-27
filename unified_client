@@ -80,7 +80,7 @@ politekill() {
   done
   sleep 1
   for i in "${@}"; do
-    pkill -9 -f "${1}"
+    pkill -9 -f "${i}"
   done
 }
 

@@ -170,5 +170,12 @@ lines="$(wc -l < /tmp/arping.log)"
 wait_for 5 arpings_over "${lines}"
 result $? 'and arpings again once the gateway is back'
 
+reset link
+STUB_STRAY=1 /usr/bin/arping -c 5 -w 5 -I "${iface}" "${gateway}" > /dev/null 2>&1 &
+stray=$!
+start 60
+wait_for 10 gone "${stray}"
+result $? 'a stray arping that ignores TERM is killed with -9'
+
 reset
 exit "${failures}"

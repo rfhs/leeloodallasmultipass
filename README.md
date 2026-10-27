@@ -16,7 +16,7 @@ Tests:
     ./tests/test_ldm_checker.sh
     ./tests/test_ldm_checker.sh -s bash -s dash -s mksh -s 'busybox ash'
 
-`tests/test_unified_client.sh` tests `unified_client` without radios, the same way: a dummy interface for wlan10 (so the host needs the dummy module) and stand-ins for wpa_supplicant, dhcpcd and arping. It checks that a client waits for its interface, connects and arpings the gateway, and waits rather than spinning while it has no gateway. `-s` works the same, and `-u` tests another unified_client.
+`tests/test_unified_client.sh` tests `unified_client` without radios, the same way: a dummy interface for wlan10 (so the host needs the dummy module) and stand-ins for wpa_supplicant, dhcpcd and arping. It checks that a client waits for its interface, connects and arpings the gateway, waits rather than spinning while it has no gateway, and kills stray processes that ignore TERM. `-s` works the same, and `-u` tests another unified_client.
 
     ./tests/test_unified_client.sh -s bash -s dash -s mksh -s 'busybox ash'
 
