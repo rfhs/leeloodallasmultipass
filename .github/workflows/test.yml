@@ -77,3 +77,12 @@ jobs:
         run: |
           # word splitting runs "busybox ash" as busybox with ash
           ${TEST_SHELL} tests/test_ldm_checker.sh -s "${TEST_SHELL}"
+
+      - name: Test unified_client
+        env:
+          TEST_SHELL: ${{ matrix.shell }}
+        run: |
+          # its container makes a dummy interface for wlan10
+          sudo modprobe dummy
+          # word splitting runs "busybox ash" as busybox with ash
+          ${TEST_SHELL} tests/test_unified_client.sh -s "${TEST_SHELL}"

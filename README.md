@@ -16,4 +16,8 @@ Tests:
     ./tests/test_ldm_checker.sh
     ./tests/test_ldm_checker.sh -s bash -s dash -s mksh -s 'busybox ash'
 
-It prints PASS or FAIL for each case and exits 1 if any failed. GitHub Actions (`.github/workflows/test.yml`) runs ShellCheck on every shell script and the test under bash, dash, mksh and busybox ash.
+`tests/test_unified_client.sh` tests `unified_client` without radios, the same way: a dummy interface for wlan10 (so the host needs the dummy module) and stand-ins for wpa_supplicant, dhcpcd and arping. It checks that a client waits for its interface, connects and arpings the gateway, and waits rather than spinning while it has no gateway. `-s` works the same, and `-u` tests another unified_client.
+
+    ./tests/test_unified_client.sh -s bash -s dash -s mksh -s 'busybox ash'
+
+They print PASS or FAIL for each case and exit 1 if any failed. GitHub Actions (`.github/workflows/test.yml`) runs ShellCheck on every shell script and both tests under bash, dash, mksh and busybox ash.

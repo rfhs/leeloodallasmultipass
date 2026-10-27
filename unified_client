@@ -114,7 +114,14 @@ do
       start_time=$(date '+%s')
       while [ "${start_time}" -gt $(( $(date '+%s') - connection_timeout )) ]; do
         #we should be checking arping success but the exit codes are weird
-        ${arping_cmdline} "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')"
+        gateway="$(ip route show dev "${interface}" | awk '/default via/ {print $3}')"
+        if [ -n "${gateway}" ]; then
+          ${arping_cmdline} "${gateway}"
+        else
+          # with no gateway (e.g. deauthed) arping fails at once, so without
+          # this the loop would spin until the gateway is back
+          sleep 1
+        fi
         #register connection success
         #since we are not 100% sure we are connected, let's include the ip address for now
         ip addr show dev "${interface}" 2>&1 | awk '/inet / {print $2}' > "/run/rfctf_status/${ssid}_active"
