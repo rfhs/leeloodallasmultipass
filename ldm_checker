@@ -1,74 +1,92 @@
 #!/bin/sh
 set -eu
-exit_code=0
 status_dir='/root/shared_persistent_storage'
 [ ! -d "${status_dir}" ] && mkdir -p "${status_dir}"
 clientstatus="${status_dir}/Client_status"
-printf "# This file is auto generated once per minute (ideally) and NEVER read by anything\n" | tee "${clientstatus}"
-printf '# Last generation start time %s (compare to "date" command)\n' "$(date)" | tee -a "${clientstatus}"
+header="# This file is auto generated once per minute (ideally) and NEVER read by anything
+# Last generation start time $(date) (compare to \"date\" command)"
+printf '%s\n' "${header}"
+printf '%s\n' "${header}" > "${clientstatus}"
 
 #XXX WARNING XXX
 # This only supports ldm conf files with a max of 4 wpa_supplicant conf files per interface
 
-# shellcheck disable=SC2013
-for conffile in $(awk '!/^#/ {print $4,$5,$6,$7}' ldm.conf); do
-  requested_timeout="$(grep "${conffile}" ldm.conf | awk '{print $3}')"
-  multiplier="0"
-  # shellcheck disable=SC2034
-  for i in $(awk "/${conffile}/{print \$4,\$5,\$6,\$7}" ldm.conf); do
-    # Here we see how many conf files each wifi card gets
-    multiplier="$(( multiplier + 1 ))"
-  done
-  # Now we multiply the timeout by how many conf files to find out how long it really takes
-  # +60 for a little wiggle room
-  timeout="$(( requested_timeout * multiplier + 60 ))"
-  if ! pgrep -f "unified_client .* ${requested_timeout}.*${conffile}" > /dev/null 2>&1; then
-    printf "No unified_client running for configured %s\n" "${conffile}" | tee -a "${clientstatus}"
-    exit_code=1
-  fi
-  ssid=$(sed -n -e 's/^[[:space:]]*//g' -e 's/"//g' -e '/ssid/s/ssid=//p' "config/${conffile}" | head -n1)
-  if [ -f "/run/rfctf_status/${ssid}_attempt" ]; then
-    attempt_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_attempt")
-    currtime=$(date +%s)
-    diff=$(( currtime - attempt_mtime ))
-    if [ "${diff}" -gt "${timeout}" ]; then
-      printf "No connection attempt on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
-      exit_code=1
-    fi
-    unset attempt_mtime diff
-    if [ "${1:-}" != "--test" ]; then
-      if [ -f "/run/rfctf_status/${ssid}_active" ]; then
-        active_mtime=$(stat -c %Y "/run/rfctf_status/${ssid}_active")
-        currtime=$(date +%s)
-        diff=$(( currtime - active_mtime ))
-        if [ "${diff}" -gt "${timeout}" ]; then
-          printf "No connection success on configured ssid %s in %ss\n" "${ssid}" "${diff}" | tee -a "${clientstatus}"
-          if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
-            # These are client only, so it is okay if they failed to connect
-            true
-          else
-            exit_code=1
-          fi
-        fi
-        unset active_mtime diff
-      else
-        printf "No connection success on configured ssid %s\n" "${ssid}" | tee -a "${clientstatus}"
-        if [ "${ssid}" = 'RFHS_RFCTF_00' ] || [ "${ssid}" = 'RFHS_RFCTF_03' ] || [ "${ssid}" = 'RFHS_RFCTF_06' ]; then
-          # These are client only, so it is okay if they failed to connect
-          true
-        else
-          exit_code=1
-        fi
-      fi
-    fi
-  else
-    printf "No connection attempt on configured ssid %s\n" "${ssid}" | tee -a "${clientstatus}"
-    exit_code=1
-  fi
-done
-if [ "${exit_code}" = '0' ]; then
-  printf 'Everything is operating as expected.\n' | tee -a "${clientstatus}"
-else
-  printf 'Something is not operating as expected.\n' | tee -a "${clientstatus}"
-fi
-exit "${exit_code}"
+# One pgrep, one stat, one date and one awk for all the clients. pgrep has
+# to finish before awk starts, or it would list awk, whose program mentions
+# unified_client. A missing status file just isn't listed.
+procs="$(pgrep -af unified_client)" || true
+mtimes="$(stat -c '%Y %n' /run/rfctf_status/*_attempt /run/rfctf_status/*_active 2> /dev/null)" || true
+
+# For each conf file on each ldm.conf line: a unified_client running with the
+# line's timeout and that conf file, matched as a regex as pgrep -f does; then,
+# for the conf file's SSID (its first ssid= line, read as unified_client reads
+# it), a connection attempt and, unless --test, a connection success within
+# the timeout times the line's number of conf files, plus 60 s.
+LDM_PROCS="${procs}" LDM_MTIMES="${mtimes}" awk -v test="${1:-}" -v status="${clientstatus}" -v now="$(date +%s)" '
+  function out(msg) {
+    printf "%s", msg
+    printf "%s", msg >> status
+  }
+  BEGIN {
+    nprocs = split(ENVIRON["LDM_PROCS"], procs, "\n")
+    n = split(ENVIRON["LDM_MTIMES"], lines, "\n")
+    for (i = 1; i <= n; i++) {
+      split(lines[i], f, " ")
+      mtime[substr(lines[i], length(f[1]) + 2)] = f[1]
+    }
+    exit_code = 0
+    while ((getline line < "ldm.conf") > 0) {
+      if (line ~ /^#/) continue
+      nf = split(line, f)
+      confs = 0
+      for (k = 4; k <= 7 && k <= nf; k++) confs++
+      for (k = 4; k <= 7 && k <= nf; k++) check(f[k], f[3], confs)
+    }
+    if (exit_code == 0) out("Everything is operating as expected.\n")
+    else out("Something is not operating as expected.\n")
+    exit exit_code
+  }
+  function check(conffile, requested_timeout, confs,    timeout, pattern, running, i, ssid, cfg, l, r, file, diff) {
+    timeout = requested_timeout * confs + 60
+    pattern = "unified_client .* " requested_timeout ".*" conffile
+    running = 0
+    for (i = 1; i <= nprocs; i++) if (procs[i] ~ pattern) running = 1
+    if (!running) {
+      out(sprintf("No unified_client running for configured %s\n", conffile))
+      exit_code = 1
+    }
+    ssid = ""
+    cfg = "config/" conffile
+    while ((r = (getline l < cfg)) > 0) {
+      sub(/^[ \t\r\v\f]*/, "", l)
+      gsub(/"/, "", l)
+      if (sub(/^ssid=/, "", l)) {
+        ssid = l
+        break
+      }
+    }
+    if (r < 0) printf "ldm_checker: cannot read %s\n", cfg > "/dev/stderr"
+    close(cfg)
+    file = "/run/rfctf_status/" ssid "_attempt"
+    if (!(file in mtime)) {
+      out(sprintf("No connection attempt on configured ssid %s\n", ssid))
+      exit_code = 1
+      return
+    }
+    diff = now - mtime[file]
+    if (diff > timeout) {
+      out(sprintf("No connection attempt on configured ssid %s in %ss\n", ssid, diff))
+      exit_code = 1
+    }
+    if (test == "--test") return
+    file = "/run/rfctf_status/" ssid "_active"
+    if (file in mtime) {
+      diff = now - mtime[file]
+      if (diff <= timeout) return
+      out(sprintf("No connection success on configured ssid %s in %ss\n", ssid, diff))
+    } else {
+      out(sprintf("No connection success on configured ssid %s\n", ssid))
+    }
+    # These are client only, so it is okay if they failed to connect
+    if (ssid != "RFHS_RFCTF_00" && ssid != "RFHS_RFCTF_03" && ssid != "RFHS_RFCTF_06") exit_code = 1
+  }'
