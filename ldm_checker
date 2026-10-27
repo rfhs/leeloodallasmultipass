@@ -13,7 +13,7 @@ if [ "${1:-}" = "--test" ]; then
     command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (ldm)"
   done
   # unified_client, including the commands it runs only in some branches
-  for tool in arping awk date dhcpcd grep head ip iw pkill sed seq sleep timeout touch wpa_supplicant; do
+  for tool in arping awk date dhcpcd head ip pkill sed sleep timeout touch wpa_supplicant; do
     command -v "${tool}" > /dev/null 2>&1 || missing_tools="${missing_tools} ${tool} (unified_client)"
   done
   # helpers/RFHS_WPA_HIDDEN_2G

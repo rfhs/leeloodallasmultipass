@@ -16,7 +16,7 @@ work=/root/leeloodallasmultipass
 status=/root/shared_persistent_storage/Client_status
 
 # Stand-ins for the tools ldm_checker --test requires of ldm and unified_client
-stubs="arping screen dhcpcd ip iw wpa_supplicant"
+stubs="arping screen dhcpcd ip wpa_supplicant"
 for tool in ${stubs}; do
   printf '#!/bin/sh\n' > "/usr/local/bin/${tool}"
   chmod +x "/usr/local/bin/${tool}"

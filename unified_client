@@ -28,12 +28,51 @@ conf_files="${*}"
 #wait for interface
 printf "Waiting for %s...\n" "${interface}"
 while true; do
-  if ip addr show "${interface}" > /dev/null 2>&1; then
+  if [ -e "/sys/class/net/${interface}" ]; then
     break
   fi
   sleep 1
 done
 printf "We have %s, continuing...\n" "${interface}"
+
+# The polls below run every second, so these two only use the shell's
+# builtins: they start no processes.
+
+# associated: succeeds while the interface is associated with an AP, which is
+# when iw link says "Connected". The kernel turns the interface's carrier on
+# when it associates. Reading the carrier fails while the interface is down,
+# and that counts as not associated.
+associated() {
+  carrier=""
+  read -r carrier 2> /dev/null < "/sys/class/net/${interface}/carrier"
+  [ "${carrier}" = 1 ]
+}
+
+# find_gateway: sets gateway to the interface's default gateway, e.g.
+# 172.17.42.1, or to nothing when it has none. /proc/net/route has a line per
+# route, starting with its interface, destination and gateway:
+#   Iface   Destination  Gateway   Flags ...
+#   wlan10  00000000     012A11AC  0003  ...
+# The default route's destination is 00000000. The gateway is in hex with its
+# bytes in reverse order: 012A11AC is 01 2A 11 AC, so 172.17.42.1.
+find_gateway() {
+  gateway=""
+  while read -r route_interface destination hex_gateway _; do
+    if [ "${route_interface}" = "${interface}" ] && [ "${destination}" = 00000000 ] \
+      && [ "${hex_gateway}" != 00000000 ]; then
+      # cut 012A11AC into its bytes: ${x#??} is x without its first two
+      # characters, ${x%??} x without its last two
+      byte1="${hex_gateway%??????}" # 01
+      byte2="${hex_gateway#??}"     # 2A11AC
+      byte2="${byte2%????}"         # 2A
+      byte3="${hex_gateway#????}"   # 11AC
+      byte3="${byte3%??}"           # 11
+      byte4="${hex_gateway#??????}" # AC
+      gateway="$((0x${byte4})).$((0x${byte3})).$((0x${byte2})).$((0x${byte1}))"
+      return
+    fi
+  done < /proc/net/route
+}
 
 politekill() {
   for i in "${@}"; do
@@ -90,31 +129,37 @@ do
     #start new wpa_supplicant and wait up to 12 seconds for a connection
     printf "Attempting to connect %s to SSID: %s for %ss using config %s...\n" "${interface}" "${ssid}" "${connection_timeout}" "${conffile}"
     ${wpa_supplicant_cmdline} &
-    for i in $(seq 12); do
-      if iw "${interface}" link | grep -q '^Connected'; then
+    tries=0
+    while [ "${tries}" -lt 12 ]; do
+      if associated; then
         break
       fi
       sleep 1
+      tries=$((tries + 1))
     done
 
     #start new dhcp client and wait up to 28 seconds for success
     ${dhcp_cmdline} &
-    for i in $(seq 28); do
-      if [ -n "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')" ]; then
+    tries=0
+    while [ "${tries}" -lt 28 ]; do
+      find_gateway
+      if [ -n "${gateway}" ]; then
         break
       fi
       sleep 1
+      tries=$((tries + 1))
     done
 
     #register connection attempt
     touch "/run/rfctf_status/${ssid}_attempt"
 
-    if [ -n "$(ip route show dev "${interface}" | awk '/default via/ {print $3}')" ]; then
+    find_gateway
+    if [ -n "${gateway}" ]; then
       printf "We have an ip address\n"
       start_time=$(date '+%s')
       while [ "${start_time}" -gt $(( $(date '+%s') - connection_timeout )) ]; do
         #we should be checking arping success but the exit codes are weird
-        gateway="$(ip route show dev "${interface}" | awk '/default via/ {print $3}')"
+        find_gateway
         if [ -n "${gateway}" ]; then
           ${arping_cmdline} "${gateway}"
         else

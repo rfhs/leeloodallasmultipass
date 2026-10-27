@@ -22,8 +22,7 @@ log=/tmp/client.log
 # titles itself as dhcpcd 10 does; arping logs its arguments, or with no
 # address fails at once, as arping does. With
 # STUB_STRAY=1 one ignores TERM and leaves the interface alone, as a stray left
-# by an earlier run that has to be killed with -9. iw reports the interface
-# connected while it has carrier.
+# by an earlier run that has to be killed with -9.
 cat > /usr/local/bin/wpa_supplicant << 'EOF'
 #!/bin/sh
 if [ -n "${STUB_STRAY:-}" ]; then
@@ -62,15 +61,7 @@ fi
 printf '%s\n' "$*" >> /tmp/arping.log
 sleep 1
 EOF
-cat > /usr/local/bin/iw << 'EOF'
-#!/bin/sh
-if [ "$(cat "/sys/class/net/${1}/carrier" 2> /dev/null)" = 1 ]; then
-  printf 'Connected to 02:00:00:00:00:00 (on %s)\n' "${1}"
-else
-  printf 'Not connected.\n'
-fi
-EOF
-chmod +x /usr/local/bin/wpa_supplicant /usr/local/bin/dhcpcd /usr/bin/arping /usr/local/bin/iw
+chmod +x /usr/local/bin/wpa_supplicant /usr/local/bin/dhcpcd /usr/bin/arping
 
 kill_stubs() {
   pkill -9 -f '/usr/local/bin/wpa_supplicant|^dhcpcd: |/usr/bin/arping' || true
