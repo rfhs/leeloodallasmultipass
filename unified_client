@@ -74,14 +74,18 @@ find_gateway() {
   done < /proc/net/route
 }
 
+# politekill pattern...: TERM, then a second later KILL, for the processes
+# whose command line matches any of the patterns; one pkill each, as every
+# pkill -f reads every process's command line. No pattern may be empty: that
+# would match every process.
 politekill() {
+  pattern=""
   for i in "${@}"; do
-    pkill -TERM -f "${i}"
+    pattern="${pattern}${pattern:+|}${i}"
   done
+  pkill -TERM -f "${pattern}"
   sleep 1
-  for i in "${@}"; do
-    pkill -9 -f "${i}"
-  done
+  pkill -9 -f "${pattern}"
 }
 
 control_c() {
